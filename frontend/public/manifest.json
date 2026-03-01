@@ -1,0 +1,16 @@
+{
+  "name": "White OWL - UNAL Campus Navigator",
+  "short_name": "White OWL",
+  "description": "Sistema de navegación y descubrimiento de puntos de interés en la Universidad Nacional de Colombia",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1a365d",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    }
+  ]
+}

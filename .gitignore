@@ -34,3 +34,6 @@ npm-debug.log*
 # Cache
 .cache/
 .vite/
+
+# Keys
+*.pem

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,6 +17,8 @@ import (
 	jwtmanager "auth-service/internal/platform/jwt"
 )
 
+const cleanupInterval = 24 * time.Hour
+
 // AuthService contiene toda la lógica de negocio de autenticación.
 type AuthService struct {
 	config      *configs.Config
@@ -25,7 +28,6 @@ type AuthService struct {
 	googleVerif *google.Verifier
 }
 
-// NewAuthService construye el service con todas sus dependencias.
 func NewAuthService(
 	cfg *configs.Config,
 	users domain.UserRepository,
@@ -42,23 +44,45 @@ func NewAuthService(
 	}
 }
 
-// DTOs de entrada y salida
+// StartCleanupWorker lanza una goroutine que elimina tokens expirados
+// cada 24h. Se detiene cuando el contexto se cancela (graceful shutdown).
+func (s *AuthService) StartCleanupWorker(ctx context.Context) {
+	go func() {
+		ticker := time.NewTicker(cleanupInterval)
+		defer ticker.Stop()
 
-// LoginInput contiene los datos que llegan del handler al iniciar sesión.
+		log.Println("Cleanup worker de tokens iniciado")
+
+		for {
+			select {
+			case <-ticker.C:
+				if err := s.tokens.DeleteExpired(ctx); err != nil {
+					log.Printf("cleanup tokens expirados: %v", err)
+				} else {
+					log.Println("cleanup: tokens expirados eliminados")
+				}
+			case <-ctx.Done():
+				log.Println("cleanup worker detenido")
+				return
+			}
+		}
+	}()
+}
+
+// DTOs
+
 type LoginInput struct {
 	IDToken   string
 	UserAgent string
 	IPAddress string
 }
 
-// AuthResult es la respuesta exitosa de login o refresh.
 type AuthResult struct {
 	AccessToken  string
 	RefreshToken string
-	ExpiresIn    int // segundos hasta que vence el access token
+	ExpiresIn    int
 }
 
-// UserInfo es la respuesta del endpoint /me.
 type UserInfo struct {
 	ID      uuid.UUID
 	Email   string
@@ -66,12 +90,10 @@ type UserInfo struct {
 	Picture string
 }
 
-// Métodos del service
+// Métodos de negocio
 
-// LoginWithGoogle valida el ID Token de Google, verifica el dominio,
-// persiste el usuario y genera los tokens de sesión.
 func (s *AuthService) LoginWithGoogle(ctx context.Context, input LoginInput) (*AuthResult, error) {
-	// 1. Verificar el ID Token con Google.
+	// 1. Verificar ID Token con Google.
 	googleUser, err := s.googleVerif.Verify(ctx, input.IDToken)
 	if err != nil {
 		return nil, domain.ErrInvalidGoogleToken
@@ -83,7 +105,7 @@ func (s *AuthService) LoginWithGoogle(ctx context.Context, input LoginInput) (*A
 		return nil, domain.ErrDomainNotAllowed
 	}
 
-	// 3. Crear o actualizar el usuario en BD.
+	// 3. Crear o actualizar usuario en BD.
 	user, err := s.users.Upsert(ctx, &domain.User{
 		Email:    googleUser.Email,
 		Name:     googleUser.Name,
@@ -94,50 +116,49 @@ func (s *AuthService) LoginWithGoogle(ctx context.Context, input LoginInput) (*A
 		return nil, fmt.Errorf("persistir usuario: %w", err)
 	}
 
-	// 4. Generar tokens de sesión.
 	return s.generateSession(ctx, user, input.UserAgent, input.IPAddress)
 }
 
-// RefreshSession rota el refresh token y emite un nuevo access token.
-// El token usado queda revocado, cada refresh token es de un solo uso.
+// RefreshSession rota el refresh token y emite una nueva sesión.
+// Si el token recibido ya estaba revocado, asume un posible replay attack
+// y revoca todas las sesiones activas del usuario como medida de seguridad.
 func (s *AuthService) RefreshSession(ctx context.Context, rawRefreshToken string) (*AuthResult, error) {
-	// 1. Calcular hash del token recibido para buscarlo en BD.
 	hash := hashToken(rawRefreshToken)
 
-	// 2. Buscar el token en BD.
 	stored, err := s.tokens.FindByHash(ctx, hash)
 	if err != nil {
 		return nil, domain.ErrInvalidRefreshToken
 	}
 
-	// 3. Validar que no esté revocado ni expirado.
-	if !stored.IsValid() {
+	// Token revocado usado de nuevo — posible replay attack.
+	// Revocar todas las sesiones del usuario por precaución.
+	if stored.Revoked {
+		log.Printf("refresh token revocado reutilizado — revocando todas las sesiones del usuario %s", stored.UserID)
+		_ = s.tokens.RevokeAllForUser(ctx, stored.UserID)
 		return nil, domain.ErrInvalidRefreshToken
 	}
 
-	// 4. Revocar el token usado: cada refresh genera uno nuevo.
-	if err := s.tokens.Revoke(ctx, hash); err != nil {
-		return nil, fmt.Errorf("revocar token anterior: %w", err)
+	if stored.IsExpired() {
+		return nil, domain.ErrInvalidRefreshToken
 	}
 
-	// 5. Obtener el usuario.
+	// Token válido — revocar y emitir nueva sesión.
+	if err := s.tokens.Revoke(ctx, hash); err != nil {
+		return nil, fmt.Errorf("revocar token: %w", err)
+	}
+
 	user, err := s.users.FindByID(ctx, stored.UserID)
 	if err != nil {
 		return nil, domain.ErrUserNotFound
 	}
 
-	// 6. Generar nueva sesión, manteniendo user_agent e ip del token original.
 	return s.generateSession(ctx, user, stored.UserAgent, stored.IPAddress)
 }
 
-// Logout revoca el refresh token, invalidando la sesión.
 func (s *AuthService) Logout(ctx context.Context, rawRefreshToken string) error {
-	hash := hashToken(rawRefreshToken)
-	// Revoke es idempotente — no falla si el token ya estaba revocado.
-	return s.tokens.Revoke(ctx, hash)
+	return s.tokens.Revoke(ctx, hashToken(rawRefreshToken))
 }
 
-// GetCurrentUser retorna los datos del usuario a partir del access token.
 func (s *AuthService) GetCurrentUser(ctx context.Context, accessToken string) (*UserInfo, error) {
 	claims, err := s.jwtManager.Verify(accessToken)
 	if err != nil {
@@ -164,26 +185,21 @@ func (s *AuthService) GetCurrentUser(ctx context.Context, accessToken string) (*
 
 // Helpers privados
 
-// generateSession emite un access token JWT y un refresh token,
-// persiste el refresh token en BD y retorna el AuthResult.
 func (s *AuthService) generateSession(
 	ctx context.Context,
 	user *domain.User,
 	userAgent, ipAddress string,
 ) (*AuthResult, error) {
-	// Access token JWT firmado con RS256.
 	accessToken, err := s.jwtManager.Generate(user.ID, user.Email)
 	if err != nil {
 		return nil, fmt.Errorf("generar access token: %w", err)
 	}
 
-	// Refresh token: valor aleatorio opaco de 32 bytes.
 	rawRefreshToken, err := generateSecureToken()
 	if err != nil {
 		return nil, fmt.Errorf("generar refresh token: %w", err)
 	}
 
-	// Persistir el hash del refresh token, nunca el valor raw.
 	refreshTTL := time.Duration(s.config.RefreshTokenTTL) * time.Second
 	err = s.tokens.Save(ctx, &domain.RefreshToken{
 		UserID:    user.ID,
@@ -198,12 +214,11 @@ func (s *AuthService) generateSession(
 
 	return &AuthResult{
 		AccessToken:  accessToken,
-		RefreshToken: rawRefreshToken, // se envía al cliente solo aquí, nunca más
+		RefreshToken: rawRefreshToken,
 		ExpiresIn:    s.config.AccessTokenTTL,
 	}, nil
 }
 
-// generateSecureToken genera un token opaco aleatorio de 32 bytes (64 chars hex).
 func generateSecureToken() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -212,8 +227,6 @@ func generateSecureToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// hashToken calcula el SHA-256 hex de un token raw.
-// Es lo que se guarda en BD y lo que se usa para buscar.
 func hashToken(raw string) string {
 	h := sha256.Sum256([]byte(raw))
 	return hex.EncodeToString(h[:])

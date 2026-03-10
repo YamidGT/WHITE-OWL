@@ -27,11 +27,7 @@ func (r *tokenRepository) Save(ctx context.Context, token *domain.RefreshToken) 
 		VALUES ($1, $2, $3, $4, $5)
 	`
 	_, err := r.db.Exec(ctx, query,
-		token.UserID,
-		token.TokenHash,
-		token.UserAgent,
-		token.IPAddress,
-		token.ExpiresAt,
+		token.UserID, token.TokenHash, token.UserAgent, token.IPAddress, token.ExpiresAt,
 	)
 	if err != nil {
 		return fmt.Errorf("Save token: %w", err)
@@ -47,14 +43,8 @@ func (r *tokenRepository) FindByHash(ctx context.Context, hash string) (*domain.
 	`
 	var t domain.RefreshToken
 	err := r.db.QueryRow(ctx, query, hash).Scan(
-		&t.ID,
-		&t.UserID,
-		&t.TokenHash,
-		&t.UserAgent,
-		&t.IPAddress,
-		&t.ExpiresAt,
-		&t.CreatedAt,
-		&t.Revoked,
+		&t.ID, &t.UserID, &t.TokenHash, &t.UserAgent, &t.IPAddress,
+		&t.ExpiresAt, &t.CreatedAt, &t.Revoked,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -67,22 +57,15 @@ func (r *tokenRepository) FindByHash(ctx context.Context, hash string) (*domain.
 
 func (r *tokenRepository) Revoke(ctx context.Context, hash string) error {
 	query := `UPDATE refresh_tokens SET revoked = TRUE WHERE token_hash = $1`
-	result, err := r.db.Exec(ctx, query, hash)
+	_, err := r.db.Exec(ctx, query, hash)
 	if err != nil {
 		return fmt.Errorf("Revoke token: %w", err)
 	}
-	// Si no se afectó ninguna fila, el token no existía y se ignora,
-	// el logout debe ser idempotente.
-	_ = result
 	return nil
 }
 
 func (r *tokenRepository) RevokeAllForUser(ctx context.Context, userID uuid.UUID) error {
-	query := `
-		UPDATE refresh_tokens
-		SET revoked = TRUE
-		WHERE user_id = $1 AND revoked = FALSE
-	`
+	query := `UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = $1 AND revoked = FALSE`
 	_, err := r.db.Exec(ctx, query, userID)
 	if err != nil {
 		return fmt.Errorf("RevokeAllForUser: %w", err)

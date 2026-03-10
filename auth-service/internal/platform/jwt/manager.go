@@ -74,7 +74,6 @@ func (m *Manager) Verify(tokenString string) (*Claims, error) {
 		&Claims{},
 		func(t *jwt.Token) (any, error) {
 			// Verificar explícitamente que el algoritmo sea RS256.
-			// Sin esto, un atacante podría enviar un token firmado con "none".
 			if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
 				return nil, fmt.Errorf("algoritmo inesperado: %v", t.Header["alg"])
 			}
@@ -98,7 +97,7 @@ func (m *Manager) PublicKey() *rsa.PublicKey {
 	return m.publicKey
 }
 
-// --- helpers de carga de claves ---
+// Helpers de carga de claves
 
 func loadPrivateKey(path string) (*rsa.PrivateKey, error) {
 	data, err := os.ReadFile(path)

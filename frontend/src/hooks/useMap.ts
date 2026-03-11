@@ -1,11 +1,12 @@
 import { useDispatch, useSelector } from "react-redux";
 import { useCallback } from "react";
-import { setMap, setMode, addPOI, removePOI, setSelectedBuilding } from "../features/map/mapSlice";
+import { setMap, setMode, addPOI, removePOI, setSelectedBuilding, setUserLocation } from "../features/map/mapSlice";
 import mapboxgl from "mapbox-gl";
 import type { RootState } from "../app/store";
 import type { POI, Building } from "../features/map/types";
 
 let mapInstance: mapboxgl.Map | null = null;
+const poiMarkers = new Map<string, mapboxgl.Marker>();  // Mantener referencias a marcadores localmente
 
 export const useMap = () => {
   const dispatch = useDispatch();
@@ -79,15 +80,22 @@ export const useMap = () => {
       .setPopup(popup)
       .addTo(mapInstance);
 
-    // Store marker reference with POI
-    dispatch(addPOI({ ...poi, marker }));
+    // Guardar referencias al marcador localmente (no en Redux)
+    poiMarkers.set(poi.id, marker);
+    
+    // Guardar POI en Redux sin el marcador
+    const { marker: _, ...poiWithoutMarker } = poi;
+    dispatch(addPOI(poiWithoutMarker));
   };
 
   const removePOIFromMap = (poiId: string) => {
-    const poi = pois.find((p) => p.id === poiId);
-    if (poi && poi.marker) {
-      poi.marker.remove();
+    // Remover marcador del mapa usando la referencia local
+    const marker = poiMarkers.get(poiId);
+    if (marker) {
+      marker.remove();
+      poiMarkers.delete(poiId);
     }
+    // Remover POI de Redux
     dispatch(removePOI(poiId));
   };
 
@@ -127,6 +135,16 @@ export const useMap = () => {
     });
   };
 
+  const setUserLocationOnState =(coords : {lat: number, lng:number} | null) => {
+    dispatch(setUserLocation(coords));
+  };
+
+  const getUserLocation = () => {
+    // Los datos de ubicación se leen desde Redux usando useSelector en los componentes
+    // No se pueden acceder directamente desde el hook
+    return null;
+  };
+
   return {
     setMapInstance,
     setMapMode,
@@ -140,5 +158,8 @@ export const useMap = () => {
     buildings,
     selectedBuilding,
     mode,
+    setUserLocation: setUserLocationOnState,
+    getUserLocation,
   };
+
 };

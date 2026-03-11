@@ -1,9 +1,14 @@
 import { useState } from "react";
+import { useDispatch } from "react-redux";
 import { useMap } from "../../hooks/useMap";
+import { setUserLocation } from "./mapSlice";
 
 export default function MapControls() {
-  const { getMapInstance, setMapMode } = useMap();
+  const { getMapInstance, setMapMode, flyToLocation } = useMap();
+  const dispatch = useDispatch();
   const [is3D, setIs3D] = useState(false);
+  const [lat, setLat] = useState("");
+  const [lng, setLng] = useState("");
 
   const toggle3D = () => {
     const map = getMapInstance();
@@ -32,6 +37,17 @@ export default function MapControls() {
     });
     setIs3D(false);
     setMapMode("2D");
+  };
+
+  const goToCoords = () => {
+    const nlat = parseFloat(lat);
+    const nlng = parseFloat(lng);
+    if (!isNaN(nlat) && !isNaN(nlng)) {
+      flyToLocation(nlat, nlng);
+      dispatch(setUserLocation({ lat: nlat, lng: nlng }));
+      setLat("");
+      setLng("");
+    }
   };
 
   return (
@@ -76,6 +92,71 @@ export default function MapControls() {
       >
         ↺
       </button>
+
+      {/* Controles para coordenadas manuales */}
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "8px",
+          padding: "12px",
+          backgroundColor: "#ffffff",
+          borderRadius: "6px",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+        }}
+      >
+        <label
+          style={{
+            fontSize: "12px",
+            fontWeight: "bold",
+            color: "#1e3a5f",
+          }}
+        >
+          Ir a coordenadas
+        </label>
+        <input
+          type="number"
+          placeholder="Latitud"
+          value={lat}
+          onChange={(e) => setLat(e.target.value)}
+          step="0.0001"
+          style={{
+            padding: "8px",
+            borderRadius: "4px",
+            border: "1px solid #ddd",
+            fontSize: "12px",
+          }}
+        />
+        <input
+          type="number"
+          placeholder="Longitud"
+          value={lng}
+          onChange={(e) => setLng(e.target.value)}
+          step="0.0001"
+          style={{
+            padding: "8px",
+            borderRadius: "4px",
+            border: "1px solid #ddd",
+            fontSize: "12px",
+          }}
+        />
+        <button
+          onClick={goToCoords}
+          disabled={!lat || !lng}
+          style={{
+            padding: "8px",
+            backgroundColor: lat && lng ? "#1e3a5f" : "#ccc",
+            color: "white",
+            border: "none",
+            borderRadius: "4px",
+            cursor: lat && lng ? "pointer" : "not-allowed",
+            fontWeight: "bold",
+            fontSize: "12px",
+          }}
+        >
+          Ir
+        </button>
+      </div>
     </div>
   );
 }

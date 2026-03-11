@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { useDispatch } from "react-redux";
 import mapboxgl from "mapbox-gl";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useMap } from "../../hooks/useMap";
+import { setUserLocation } from "./mapSlice";
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN || "";
 
@@ -19,8 +21,10 @@ mapboxgl.accessToken = MAPBOX_TOKEN;
 export default function MapView() {
   const mapContainer = useRef<HTMLDivElement | null>(null);
   const map = useRef<mapboxgl.Map | null>(null);
+  const userMarker = useRef<mapboxgl.Marker | null>(null);
   const [is3D, setIs3D] = useState(false);
   const { setMapInstance } = useMap();
+  const dispatch = useDispatch();
 
   // Si el token no está configurado, mostrar mensaje de error
   if (!isTokenConfigured) {
@@ -113,6 +117,28 @@ export default function MapView() {
       ],
     });
 
+    map.current.on("click", (e) => {
+      const { lng, lat } = e.lngLat;
+      dispatch(setUserLocation({ lat, lng }));
+
+      // Crear o actualizar marcador
+      if (userMarker.current) {
+        userMarker.current.setLngLat([lng, lat]);
+      } else {
+        const el = document.createElement("div");
+        el.style.width = "20px";
+        el.style.height = "20px";
+        el.style.backgroundColor = "#FF0000";
+        el.style.borderRadius = "50%";
+        el.style.border = "3px solid white";
+        el.style.boxShadow = "0 0 8px rgba(255,0,0,0.5)";
+
+        userMarker.current = new mapboxgl.Marker(el)
+          .setLngLat([lng, lat])
+          .addTo(map.current!);
+      }
+    });
+
     map.current.addControl(new mapboxgl.NavigationControl(), "top-right");
 
     // Agregar capa de edificios 3D cuando el mapa cargue
@@ -153,7 +179,7 @@ export default function MapView() {
     return () => {
       map.current?.remove();
     };
-  }, [setMapInstance]);
+  }, [setMapInstance, dispatch]);
 
   const toggle3D = () => {
     if (!map.current) return;
@@ -167,31 +193,34 @@ export default function MapView() {
     }
   };
 
-  return (
-    <div style={{ position: "relative", width: "100%", height: "100vh" }}>
-      <button
-        onClick={toggle3D}
-        style={{
-          position: "absolute",
-          top: 20,
-          left: 20,
-          zIndex: 1,
-          padding: "10px 16px",
-          backgroundColor: "#1e3a5f",
-          color: "white",
-          border: "none",
-          borderRadius: "6px",
-          cursor: "pointer",
-          fontWeight: "bold",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-        }}
-      >
-        {is3D ? "2D" : "3D"}
-      </button>
-      <div
-        ref={mapContainer}
-        style={{ width: "100%", height: "100%" }}
-      />
-    </div>
-  );
+return (
+  <div style={{ position: "relative", width: "100%", height: "100vh" }}>
+    {/* Botón 2D/3D existente */}
+    <button
+      onClick={toggle3D}
+      style={{
+        position: "absolute",
+        top: 20,
+        left: 20,
+        zIndex: 1,
+        padding: "10px 16px",
+        backgroundColor: "#1e3a5f",
+        color: "white",
+        border: "none",
+        borderRadius: "6px",
+        cursor: "pointer",
+        fontWeight: "bold",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+      }}
+    >
+      {is3D ? "2D" : "3D"}
+    </button>
+
+    {/* Contenedor del mapa */}
+    <div
+      ref={mapContainer}
+      style={{ width: "100%", height: "100%" }}
+    />
+  </div>
+);
 }

@@ -1,3 +1,5 @@
+# TODO: Debe integrarse con el docker-compose.yml general del proyecto.
+
 services:
   postgres:
     build: ./docker/postgres

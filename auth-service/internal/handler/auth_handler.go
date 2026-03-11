@@ -20,15 +20,15 @@ func NewAuthHandler(svc *service.AuthService) *AuthHandler {
 }
 
 // RegisterRoutes registra todos los endpoints en la app de Fiber.
-func (h *AuthHandler) RegisterRoutes(app *fiber.App, jwtMgr interface {
-	Verify(string) (interface{}, error)
-}) {
+// requireAuth es el middleware que protege la ruta /me y se pasa desde
+// main.go donde se instancia el jwtManager.
+func (h *AuthHandler) RegisterRoutes(app *fiber.App, requireAuth fiber.Handler) {
 	auth := app.Group("/auth")
 
 	auth.Post("/google", h.LoginWithGoogle)
 	auth.Post("/refresh", h.Refresh)
 	auth.Post("/logout", h.Logout)
-	auth.Get("/me", h.Me)
+	auth.Get("/me", requireAuth, h.Me)
 }
 
 // Request / Response types
@@ -153,7 +153,7 @@ func (h *AuthHandler) Me(c *fiber.Ctx) error {
 // Helpers
 
 // mapError traduce errores de dominio a respuestas HTTP.
-// El service no sabe nada de HTTP — esta es la única capa que lo hace.
+// El service no sabe nada de HTTP, esta es la única capa que lo hace.
 func (h *AuthHandler) mapError(c *fiber.Ctx, err error) error {
 	switch {
 	case errors.Is(err, domain.ErrInvalidGoogleToken):
@@ -172,7 +172,7 @@ func (h *AuthHandler) mapError(c *fiber.Ctx, err error) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": err.Error()})
 
 	default:
-		// Error inesperado, sin detalles internos al cliente.
+		// Error inesperado, sin exponer detalles internos al cliente.
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "error interno del servidor",
 		})

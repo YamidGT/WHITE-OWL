@@ -33,7 +33,7 @@ type Config struct {
 // Falla rápido si faltan variables críticas.
 func Load() *Config {
 	return &Config{
-		Port:              getEnv("PORT", "3000"),
+		Port:              getEnv("PORT", "4000"),
 		DatabaseURL:       mustGetEnv("DATABASE_URL"),
 		GoogleClientID:    mustGetEnv("GOOGLE_CLIENT_ID"),
 		JWTPrivateKeyPath: getEnv("JWT_PRIVATE_KEY_PATH", "./keys/private.pem"),

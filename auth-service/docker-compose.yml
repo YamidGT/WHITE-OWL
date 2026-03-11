@@ -1,0 +1,39 @@
+services:
+  postgres:
+    build: ./docker/postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  auth-service:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      PORT: 4000
+      DATABASE_URL: ${DOCKER_DATABASE_URL}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      JWT_PRIVATE_KEY_PATH: /app/keys/private.pem
+      JWT_PUBLIC_KEY_PATH: /app/keys/public.pem
+      ALLOWED_DOMAIN: ${ALLOWED_DOMAIN}
+      ACCESS_TOKEN_TTL: ${ACCESS_TOKEN_TTL}
+      REFRESH_TOKEN_TTL: ${REFRESH_TOKEN_TTL}
+    volumes:
+      - ./keys:/app/keys:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

@@ -1,7 +1,7 @@
--- migrations/2_create_refresh_tokens.sql
+-- migrations/002_create_refresh_tokens.sql
 
 CREATE TABLE IF NOT EXISTS refresh_tokens (
-    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v7(),
     user_id     UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     token_hash  VARCHAR(64) NOT NULL UNIQUE,  -- SHA-256 hex del token raw
     user_agent  VARCHAR(500) NOT NULL DEFAULT '',

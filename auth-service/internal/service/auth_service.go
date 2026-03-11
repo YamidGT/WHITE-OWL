@@ -130,10 +130,10 @@ func (s *AuthService) RefreshSession(ctx context.Context, rawRefreshToken string
 		return nil, domain.ErrInvalidRefreshToken
 	}
 
-	// Token revocado usado de nuevo — posible replay attack.
+	// Token revocado usado de nuevo, posible replay attack.
 	// Revocar todas las sesiones del usuario por precaución.
 	if stored.Revoked {
-		log.Printf("refresh token revocado reutilizado — revocando todas las sesiones del usuario %s", stored.UserID)
+		log.Printf("refresh token revocado reutilizado, revocando todas las sesiones del usuario %s...", stored.UserID)
 		_ = s.tokens.RevokeAllForUser(ctx, stored.UserID)
 		return nil, domain.ErrInvalidRefreshToken
 	}
@@ -142,7 +142,7 @@ func (s *AuthService) RefreshSession(ctx context.Context, rawRefreshToken string
 		return nil, domain.ErrInvalidRefreshToken
 	}
 
-	// Token válido — revocar y emitir nueva sesión.
+	// Token válido, revocar y emitir nueva sesión.
 	if err := s.tokens.Revoke(ctx, hash); err != nil {
 		return nil, fmt.Errorf("revocar token: %w", err)
 	}

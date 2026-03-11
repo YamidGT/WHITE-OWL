@@ -1,9 +1,9 @@
--- migrations/1_create_users.sql
+-- migrations/001_create_users.sql
 
-CREATE EXTENSION IF NOT EXISTS "pgcrypto"; -- para gen_random_uuid()
+CREATE EXTENSION IF NOT EXISTS "pg_uuidv7"; -- para uuid_generate_v7()
 
 CREATE TABLE IF NOT EXISTS users (
-    id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    id          UUID        PRIMARY KEY DEFAULT uuid_generate_v7(),
     email       VARCHAR(255) NOT NULL UNIQUE,
     name        VARCHAR(255) NOT NULL,
     google_id   VARCHAR(255) NOT NULL UNIQUE,

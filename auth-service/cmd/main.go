@@ -84,12 +84,7 @@ func main() {
 
 	// 7. Rutas.
 	authHandler := handler.NewAuthHandler(authSvc)
-
-	api := app.Group("/auth")
-	api.Post("/google", authHandler.LoginWithGoogle)
-	api.Post("/refresh", authHandler.Refresh)
-	api.Post("/logout", authHandler.Logout)
-	api.Get("/me", middleware.RequireAuth(jwtMgr), authHandler.Me)
+	authHandler.RegisterRoutes(app, middleware.RequireAuth(jwtMgr))
 
 	// Endpoint JWKS: expone la clave pública para otros microservicios.
 	app.Get("/.well-known/jwks.json", func(c *fiber.Ctx) error {
